@@ -26,7 +26,7 @@ HEADERS = {
 ## Write safety rules
 
 1. Bytes send / vault deposit / vault withdraw / sigmarket `buy` — confirm amount + recipient before calling.
-2. Thread bump: HF hard limit 6h minimum between bumps on a thread (site rule). Software floor 300s (`MIN_BUMP_GAP_SECS`) only guards against double-fire on restart/DB glitch/race condition, unrelated to the 6h rule. Live-read thread (`lastpost`, `lastposteruid`, `numreplies`) immediately before bumping; read failure → skip and log, never bump on stale data. Post-bump, `lastposteruid` = bump-bot account.
+2. Thread bump: HF hard limit 6h minimum between bumps on a thread (site rule). Software floor 300s (`MIN_BUMP_GAP_SECS`) only guards against double-fire on restart/DB glitch/race condition, unrelated to the 6h rule. Live-read thread (`lastpost`, `lastposteruid`, `numreplies`) immediately before bumping; read failure → skip and log, never bump on stale data. Post-bump, `lastposteruid` = the Stanley bump-bot account, not the thread owner.
 3. Contract `approve`/`complete`/`cancel` — confirm terms + counterparty uid first. No undo for `approve`.
 4. No delete-post/thread, no prefix write — posting is permanent.
 5. Rate limit ~240/hr/token via `x-rate-limit-remaining`. Background-polling floor ~20-30 remaining.
@@ -363,6 +363,8 @@ Rate limit: ~240/hr/token via `x-rate-limit-remaining`. Revocation: user-initiat
 is_banned = usergroup in ("7", "38") or displaygroup in ("7", "38")
 ```
 
+Core groups (official HF system groups):
+
 | ID | Label |
 |---|---|
 | `"2"` | Registered |
@@ -371,6 +373,11 @@ is_banned = usergroup in ("7", "38") or displaygroup in ("7", "38")
 | `"67"` | Vendor |
 | `"7"` | Exiled |
 | `"38"` | Banned |
+
+Member-owned groups (community factions):
+
+| ID | Label |
+|---|---|
 | `"46"` | H4CK3R$ |
 | `"68"` | Brotherhood |
 | `"48"` | Quantum |
@@ -456,13 +463,21 @@ data = await hf.read({
 })
 ```
 
+```python
+# unread PMs, requires Advanced Info scope
+data  = await hf.read({"me": {"unreadpms": True}})
+count = int(data["me"].get("unreadpms") or 0)
+```
+
 Thread reply detection: `threads._uid` gives `lastpost`/`lastposteruid` free in any call. Compare `lastpost` to stored cursor; if changed and `lastposteruid != your_uid`, fetch posts via `numreplies` page math.
 
 Rate budget (1 active user): full dashboard refresh = 2 calls. Reply detection (30 threads) = 0 extra. Fetch posts for a thread with new replies = 1-3 calls. Username batch resolution = 1 call/batch. Autobump cycle (per 4 threads) = 1 read + 1-2 writes per bump.
 
+Reading from local DB/cache and client-side filtering costs nothing against the rate limit. Prefer batching, caching, and eliminating redundant calls over increasing polling frequency.
+
 ## Known limitations
 
-No prefix write. No b-rating write. No delete-post/delete-thread. No reliable `contracts` `new` for every case. No guaranteed `from`/`to` counterparty resolution on `bytes`. Advanced Info scope required for `unreadpms` etc. (absent, not zero, without it). Category fids → empty on `_fid` thread queries. Contracts awaiting approval never auto-expire.
+No prefix write. No b-rating write. No delete-post/delete-thread. No reliable `contracts` `new` for every case. No guaranteed `from`/`to` counterparty resolution on `bytes`. Advanced Info scope required for `unreadpms` etc. (absent, not zero, without it). Category fids → empty on `_fid` thread queries. Contracts awaiting approval never auto-expire. `threads._uid` surfaces up to ~30 most recently active threads — quiet older threads fall out of view.
 
 ## Resources
 
