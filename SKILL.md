@@ -101,6 +101,10 @@ Scope: Basic Info (Advanced for private fields)
 
 `avatardimensions` → `"120|120"` (width\|height). `additionalgroups` → comma-separated. `usergroup` `"7"`/`"38"` = self-exile/self-ban.
 
+```python
+data = await hf.read({"me": {"uid": True, "username": True, "bytes": True, "vault": True, "unreadpms": True}})
+```
+
 ## Read: users
 
 Scope: Users. Input: `_uid` [ints].
@@ -108,6 +112,10 @@ Scope: Users. Input: `_uid` [ints].
 Fields: `uid`, `username`, `usergroup`, `displaygroup`, `additionalgroups`, `postnum`, `threadnum`, `awards`, `myps`, `avatar`, `avatardimensions`, `avatartype`, `usertitle`, `website`, `timeonline`, `reputation`, `referrals`
 
 `myps` = `me.bytes`. Advanced fields not available here.
+
+```python
+data = await hf.read({"users": {"_uid": [uid_int], "uid": True, "username": True, "myps": True}})
+```
 
 ## Read: forums
 
@@ -117,6 +125,10 @@ Scope: Posts. Input: `_fid` [array]. Fields: `fid`, `name`, `description`, `type
 
 Category fids: `1, 7, 45, 88, 105, 120, 141, 151, 156, 241, 259, 444, 445, 446, 447, 448, 449, 450, 451, 452, 453, 460`
 
+```python
+data = await hf.read({"forums": {"_fid": [fid_int], "fid": True, "name": True, "type": True}})
+```
+
 ## Read: threads
 
 Scope: Posts. Inputs: `_tid` [array] / `_fid` [array] / `_uid` [array, paginated].
@@ -124,6 +136,11 @@ Scope: Posts. Inputs: `_tid` [array] / `_fid` [array] / `_uid` [array, paginated
 Fields: `tid`, `uid`, `fid`, `subject`, `closed`, `numreplies`, `views`, `dateline`, `firstpost`, `lastpost`, `lastposter`, `lastposteruid`, `prefix`, `icon`, `poll`, `username`, `sticky`, `bestpid`
 
 `_uid` page 1 = newest first. No total-count field — page until empty, caps ~20-30 rows/page. tid lookup 200 + missing resource = inconclusive, not deletion proof. `numreplies` not reliable in every `_uid` context.
+
+```python
+data = await hf.read({"threads": {"_uid": [uid_int], "_page": 1, "_perpage": 30,
+                                   "tid": True, "subject": True, "lastpost": True, "numreplies": True}})
+```
 
 ## Read: posts
 
@@ -142,6 +159,13 @@ Fields: `id`, `amount`, `dateline`, `type`, `reason`
 `amount`: float string (`"430.43"`), cast `int(float(x))`. Direction: separate `_from` (sent) / `_to` (received) calls. `from`/`to`: unconfirmed — one integration reports embedded fields never return even when requested; another reports `bytes.from`/`bytes.post` return as lists (first element raw id or nested dict). Normalize for absent/scalar/list. `_from`/`_to`/`_uid`: integer UIDs required — string UID → silent empty result.
 
 `reason` is freeform text typed by the sender at send time, not a fixed enum — don't treat any value in it as guaranteed.
+
+```python
+sent     = await hf.read({"bytes": {"_from": [uid_int], "_page": 1, "_perpage": 30,
+                                     "id": True, "amount": True, "dateline": True, "reason": True, "type": True}})
+received = await hf.read({"bytes": {"_to": [uid_int], "_page": 1, "_perpage": 30,
+                                     "id": True, "amount": True, "dateline": True, "reason": True, "type": True}})
+```
 
 ### Bytes type codes
 
@@ -232,11 +256,20 @@ Fields: `crid`, `contractid`, `fromid`, `toid`, `dateline`, `amount`, `message`,
 
 Read-only. `amount` = rating value (`1`/`-1`), not bytes. `_to:[uid]` = received. `_from:[uid]` = left by uid. "Needs rating": use `_from` — no row with `fromid == my_uid` for that `contractid`. Embedded `from`/`to` on paginated `_to`/`_from` call → `"Users - Maximum of 30 users allowed."` Use flat `fromid`/`toid`.
 
+```python
+data = await hf.read({"bratings": {"_to": [uid_int], "_page": 1, "_perpage": 30,
+                                    "crid": True, "fromid": True, "amount": True, "message": True}})
+```
+
 ## Read: disputes
 
 Scope: Contracts. Inputs: `_cdid` / `_cid` / `_uid` / `_claimantuid` / `_defendantuid` (arrays).
 
 Fields: `cdid`, `contractid`, `claimantuid`, `defendantuid`, `dateline`, `status`, `dispute_tid`, `claimantnotes`, `defendantnotes`, `contract`/`claimant`/`defendant`/`dispute_thread` (embedded)
+
+```python
+data = await hf.read({"disputes": {"_cid": [cid_int], "cdid": True, "status": True, "claimantnotes": True, "defendantnotes": True}})
+```
 
 ## Read: sigmarket
 
@@ -245,6 +278,13 @@ Fields: `cdid`, `contractid`, `claimantuid`, `defendantuid`, `dateline`, `status
 **order** — `_type="order"`, `_smid`/`_uid`/`_seller`/`_buyer` [arrays], paginated. Fields: `smid`, `startdate`, `enddate`, `price`, `duration`, `active`
 
 Embedded `buyer`/`seller` on paginated order calls → `"Users - Invalid User ID Supplied."` Parallel same-token calls: one integration reports 503/challenge under parallel market+order calls (ran sequentially); another parallelizes successfully with per-call exception isolation.
+
+```python
+market = await hf.read({"sigmarket": {"_type": "market", "_uid": [uid_int], "_page": 1, "_perpage": 1,
+                                       "uid": True, "price": True, "active": True, "sig": True}})
+orders = await hf.read({"sigmarket": {"_type": "order", "_seller": [uid_int], "_page": 1, "_perpage": 30,
+                                       "smid": True, "active": True, "startdate": True, "enddate": True}})
+```
 
 ## Write: posts
 
@@ -288,6 +328,12 @@ Scope: Contracts Write
 | `middleman_deny` / `middleman_approve` | Middleman actions |
 
 `new` reliability constraints known — test exact `_position`/currency combination.
+
+```python
+{"contracts": {"_action": "new", "_uid": OTHER_UID, "_terms": "Terms text",
+               "_position": "selling", "_yourproduct": "Item", "_youramount": "100"}}
+{"contracts": {"_action": "approve", "_cid": CID}}  # _cid as target field, not independently confirmed
+```
 
 ## Write: sigmarket
 
